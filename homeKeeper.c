@@ -3,6 +3,8 @@
 #include<string.h>
 #include <LiquidCrystal.h>
 
+//NSSF REF NO 16741
+
 /*
 *	Contributors: Olupot Douglas, Habugisha David
 *
@@ -12,6 +14,9 @@
 // initialize the library with the numbers of the interface pins
 LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
 
+
+int motor_forward = 10;
+int motor_reverse = 9;
 //Create a software serial object
 SoftwareSerial serial(7,8);
 
@@ -27,6 +32,8 @@ int light_senor = A1;
 int light = 12;
 int fan = 2;
 int sent_summary = 0;
+int alarm = 13;
+
 //Setup all the required Pins once.
 void setup(){
 	serial.begin(19200);
@@ -42,6 +49,8 @@ void setup(){
 	pinMode(photPin, OUTPUT);
 	lcd.begin(16, 4);
 	lcd.println("Welcome, System initializing..");
+	//Setup the motors
+	setupMotor();
 }
 
 
@@ -74,6 +83,27 @@ void loop(){
 	}
 }
 
+
+//function to initialize the motor settings.
+void setupMotor(){
+	pinMode(motor_forward, OUTPUT);
+	pinMode(motor_reverse, OUTPUT);
+}
+
+void forward_rotation(int motor_f, int motor_r){
+	digitalWrite(motor_f, 1);
+	digitalWrite(motor_r, 0);
+}
+
+void reverse_rotation(int motor_f, int motor_r){
+	digitalWrite(motor_f, 0);
+	digitalWrite(motor_r, 1);
+}
+
+void stop_motor(){
+	digitalWrite(motor_forward, 0);
+	digitalWrite(motor_reverse, 0);
+}
 int readTemp(){
 	//Read from the temperature sensor
 	temp_output = analogRead(temp_sensor); 
@@ -87,15 +117,15 @@ int readTemp(){
 	{ 
 		//Perform necessary options 
 		//Like turn on the Cooling fans
-		digitalWrite(fan, HIGH);
+		forward_rotation(motor_forward, motor_reverse);
 	} 
 	else if(temp_value < 45) {
 		//It's getting cold in here
-		digitalWrite(fan, LOW);
+		stop_motor();
 	}
 	else if(temp_value > 60) {
 		//It's now really serious
-		digitalWrite(fan, HIGH);
+		forward_rotation();
 		sound_alarm();
 		send_sms('A');	
 	}
@@ -121,6 +151,10 @@ void process_gprs(){
 	}
 }
 
+
+void sound_alarm(){
+	digitalWrite(alarm, 1);
+}
 //Perform decisions on the GSM Inquiries. 
 void process_gsm(){
 	//Check for the inquire type
@@ -235,11 +269,19 @@ int read_light(){
 		//turn On the lights then
 		digitalWrite(light, HIGH);
 		writeToLCD("Turning On lights");
+		//Open the curtains
+		forward_rotate(motor_forward, motor_reverse);
+		delay(5000);
+		stop_motor();
 	}
 	else{
 		//Light value is too high so turn off the lights
 		digitalWrite(light, LOW);
 		writeToLCD("Turning Off lights");
+		//Close the curtains
+		reverse_rotate(motor_forward, motor_reverse);
+		delay(5000);
+		stop_motor();
 	}
 	return light_output;
 }
@@ -257,11 +299,14 @@ void sound_alarm(){
 			digitalWrite(alarm, LOW);
 			delay(1000);
 			writeToLCD("Fire Outbreak");
+			//Open the curtains
+			forward_rotate(motor_forward, motor_reverse);
 		}
 	}else{
 	//Probably just some kitchen smoke or the kids
 	//Alert the user anyway.
-	
+	send_sms('W');
+	forward_rotate(motor_forward, motor_reverse);
 	
 	}
 }
