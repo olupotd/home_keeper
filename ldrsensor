@@ -1,0 +1,202 @@
+#include <LiquidCrystal.h>
+#include <GSM.h>
+#define PINNUMBER ""
+// PIN Number for the SIM
+//#define PINNUMBER ""
+
+char userNo[20]; 
+char message[100];
+char response;
+
+// initialize the library instance
+GSM gsmAccess; // include a 'true' parameter for debug enabled
+GSM_SMS sms;
+LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
+int sensorPin = A0;    
+int smoke_sensor = A1;
+int led_pin = 9; 
+int temp_pin = A3;     
+unsigned int lightValue = 0, temp_value = 0;
+int motor_pin = 8;
+// connection state
+boolean notConnected = true;
+char light_status[100];
+
+void setup() {
+  setupLCD();
+  pinMode(8, OUTPUT);
+  //setupGSM();
+}
+
+void loop() {
+  read_light();
+  read_temp();
+}
+
+
+void setupGSM(){
+  printToLCD("Starting GSM", 0);
+  delay(10000);
+  while(notConnected)
+  {
+    if(gsmAccess.begin(PINNUMBER)==GSM_READY){
+      printToLCD("GSM.....OK", 0);
+      notConnected = false;
+    }else
+    {
+      printToLCD("ReInitializing", 0);
+      delay(1000);
+    }
+  }
+  printToLCD("GSM Initialized", 0);
+}
+
+void sendSMS(char msg_option1[], int msg_option2){
+  printToLCD("Sending Message...", 0);
+  sms.beginSMS(userNo);
+  sms.print(msg_option1);
+  if(msg_option2 > 0){
+    sms.print(msg_option2);
+  }
+  sms.endSMS(); 
+  printToLCD("Message sent!", 0);
+}
+
+void process_SMS(char sms[]){
+  if(sms == "What is the Light status"){
+    if(response == 'F'){
+    sendSMS("Lights Off", 0);
+    }
+    if(response == 'N'){
+    sendSMS("Lights ON", 0);
+    }
+  }
+  else if(sms == "What is the Temperature Value"){
+    int light_value = map(analogRead(sensorPin),0 , 1023, 0, 100);
+    sendSMS("Temperature is", temp_value);
+  }
+  else if(sms == "What is the Light Value"){
+    int light_value = map(analogRead(sensorPin),0 , 1023, 0, 100);
+    sendSMS("Light Value:", light_value);
+  }
+}
+
+void readSMS(){
+  if (sms.available())
+  {
+    if(sms.peek()=='#')
+    {
+      printToLCD("Invalid message.!", 0);
+      sms.flush();
+    }
+    //Retrieve the senders number 
+    sms.remoteNumber(userNo, 20);
+    if(userNo == "+256779209341"){
+      //It is the user's number
+      int i = 0;
+      char c;
+      while(c = sms.read()){
+        message[i] = c;
+        i++;
+      }
+      process_SMS(message);
+      
+    }else{
+      //Another user is trying to access the system, inform the authorized user.
+      
+    }
+    //Delete the message from the inbox
+    sms.flush();
+  }
+}
+
+
+void read_temp(){
+  //Method to handle temperature and smoke readings.
+  int temp_reading = map(analogRead(temp_pin), 0, 1024, 0, 100);
+  temp_value = (5.0 * temp_reading * 100) / 1024;
+  int farenheit = ((temp_value * 1.8) + 32);
+  if(farenheit > 40){
+    //Also check the smoke readings
+    printToLCD("Temp Value: ", farenheit);
+    int smokeValue = map(analogRead(smoke_sensor), 0, 1024, 0, 100);
+    if(smokeValue > 75){
+      printToLCD("Smoke Value: ", smokeValue);
+      //send_sms('W', "Smoke Value:", smokeValue);
+      printToLCD("Alarting User", 0);
+      //Put here your send_SMS code to warn a user if needed.
+      digitalWrite(8, HIGH);
+    }else{
+      //Smoke value is low but temp value is high
+      printToLCD("Smoke Value: ", smokeValue);
+      //turn on the cooling system
+    }
+  }else{
+    //Temp Values are low. Just write to LCD
+    printToLCD("Temp Value: ", temp_value);
+    //stop the fan system
+  }
+}
+
+void setupLCD(){
+  lcd.begin(16, 4);
+  pinMode(led_pin, OUTPUT); 
+  lcd.print("HOME KEEPER"); 
+  lcd.setCursor(0, 2);
+  lcd.print("Detecting");
+  lcd.setCursor(0, 3);
+  lcd.print("Components...");
+  delay(2000);
+  lcd.clear();
+}
+
+//Method to perform light functions
+void read_light(){
+  lightValue = map(analogRead(sensorPin),0 , 1023, 0, 100);
+  if(lightValue < 25){
+     digitalWrite(led_pin, HIGH);
+     printToLCD("Lights ON", 0);
+     response = 'N';
+     printToLCD("Light Value: ", lightValue);
+     digitalWrite(motor_pin, HIGH);
+     //delay(1000); // 10 seconds
+     digitalWrite(motor_pin, LOW);
+     //printToLCD("Sending Light", 0);
+     //sendSMS("Light Value is:", lightValue);
+     
+   }
+ else {
+   digitalWrite(led_pin, LOW);
+   printToLCD("Lights OFF", 0);
+   response = 'F';
+   printToLCD("Light Value: ", lightValue);
+   //send_sms('W', "Smoke Value:", lightValue);
+ }
+}
+
+//Print to LCD
+void printToLCD(char msg[], int value){
+  lcd.setCursor(0, 0);
+  if(value > 0){
+    lcd.print(msg);
+    lcd.setCursor(0, 1);
+    lcd.print(value);
+  }else{
+    lcd.print(msg);
+  }
+  delay(3000);
+  lcd.clear();
+  lcd.setCursor(0, 0);
+}
+
+void send_sms(char command, char msg[], int value){
+ switch(command){
+   case 'W':
+      sendSMS(msg, value);
+   break;
+   
+   default:
+     //Perform default in case no valid command has been set.
+   break;
+ }
+}
